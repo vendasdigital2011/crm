@@ -67,26 +67,35 @@ export class WahaClient {
    *   POST /api/sessions/{name}/start  → start (422 if already starting/working)
    */
   async startSession(name: string): Promise<{ qr?: string; status: string }> {
-    // 1) Create session (ignore 422/409 = already exists)
-    const createRes = await fetch(`${this.baseUrl}/api/sessions`, {
-      method: "POST",
-      headers: { "X-Api-Key": this.apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ name, config: { ignore: CONVERSAS_IGNORADAS } }),
-    });
-    if (!createRes.ok && createRes.status !== 422 && createRes.status !== 409) {
-      const body = await createRes.text().catch(() => "");
-      throw new Error(`waha_create_${createRes.status}: ${body.slice(0, 200)}`);
+    // 1) Tenta POST /api/sessions/start (endpoint padrao unificado do WAHA Core e Plus)
+    try {
+      const directRes = await fetch(`${this.baseUrl}/api/sessions/start`, {
+        method: "POST",
+        headers: { "X-Api-Key": this.apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ name, config: { ignore: CONVERSAS_IGNORADAS } }),
+      });
+      if (directRes.ok || directRes.status === 422 || directRes.status === 409) {
+        return this.getSessionQr(name);
+      }
+    } catch {
+      // continua para fallback
     }
 
-    // Sessão que JÁ existe devolve 422 e não recebe a config da criação — foi
-    // assim que a sessão em produção ficou sem o filtro. Convergir aqui faz
-    // toda reconexão corrigir o estado, em vez de deixar o ajuste dependendo de
-    // alguém lembrar de apagar e recriar a sessão.
-    if (createRes.status === 422 || createRes.status === 409) {
-      await this.convergirConfigDaSessao(name);
+    // 2) Fallback: POST /api/sessions (criacao separada do WAHA Plus)
+    try {
+      const createRes = await fetch(`${this.baseUrl}/api/sessions`, {
+        method: "POST",
+        headers: { "X-Api-Key": this.apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ name, config: { ignore: CONVERSAS_IGNORADAS } }),
+      });
+      if (createRes.status === 422 || createRes.status === 409) {
+        await this.convergirConfigDaSessao(name);
+      }
+    } catch {
+      // continua
     }
 
-    // 2) Start session
+    // 3) POST /api/sessions/{name}/start
     const startRes = await fetch(
       `${this.baseUrl}/api/sessions/${encodeURIComponent(name)}/start`,
       {
@@ -95,15 +104,12 @@ export class WahaClient {
         body: JSON.stringify({}),
       },
     );
-    if (!startRes.ok && startRes.status !== 422 && startRes.status !== 409) {
+    if (!startRes.ok && startRes.status !== 422 && startRes.status !== 409 && startRes.status !== 404) {
       const body = await startRes.text().catch(() => "");
       throw new Error(`waha_start_${startRes.status}: ${body.slice(0, 200)}`);
     }
-    if (startRes.status === 422 || startRes.status === 409) {
-      // Already started — fetch and return current state
-      return this.getSessionQr(name);
-    }
-    return (await startRes.json()) as { qr?: string; status: string };
+
+    return this.getSessionQr(name);
   }
 
   /**
