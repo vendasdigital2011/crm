@@ -258,7 +258,24 @@ export class WahaClient {
       headers: { "X-Api-Key": this.apiKey },
     });
     if (!res.ok) throw new Error(`waha_${res.status}`);
-    return (await res.json()) as { qr?: string; status: string };
+    const data = (await res.json()) as { qr?: string; status: string };
+
+    if (!data.qr && (data.status === "SCAN_QR_CODE" || data.status === "STARTING")) {
+      try {
+        const qrRes = await fetch(
+          `${this.baseUrl}/api/${encodeURIComponent(name)}/auth/qr?format=raw`,
+          { headers: { "X-Api-Key": this.apiKey } },
+        );
+        if (qrRes.ok) {
+          const qrData = (await qrRes.json()) as { value?: string };
+          if (qrData.value) data.qr = qrData.value;
+        }
+      } catch {
+        // Fallback silencioso
+      }
+    }
+
+    return data;
   }
 
   /**

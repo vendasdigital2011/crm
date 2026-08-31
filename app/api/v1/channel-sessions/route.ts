@@ -91,8 +91,17 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
 
   const supabase = await createClient();
-  // Nome de sessão único por canal — o hardcode `org_<8>` era 1 número por org.
-  const sessionName = `org_${activeOrg.orgId.slice(0, 8)}_${randomUUID().replace(/-/g, "").slice(0, 6)}`;
+  const { count: existingCount } = await supabase
+    .from("channel_sessions")
+    .select("*", { count: "exact", head: true })
+    .eq("organization_id", activeOrg.orgId)
+    .is("archived_at", null);
+
+  // Nome 'default' para a primeira sessao (compativel com WAHA Core e Plus)
+  const sessionName =
+    (existingCount ?? 0) === 0
+      ? "default"
+      : `org_${activeOrg.orgId.slice(0, 8)}_${randomUUID().replace(/-/g, "").slice(0, 6)}`;
 
   const { data: created, error: insErr } = await supabase
     .from("channel_sessions")
