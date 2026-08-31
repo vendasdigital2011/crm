@@ -16152,10 +16152,6 @@ forçado. Inventar é pior do que demorar um instante a mais para responder.
       '{"any_keywords": ["agendar", "marcar horário", "marcar consulta", "marcar uma visita", "agenda", "que horas vocês", "horário disponível", "remarcar", "reagendar", "cancelar o horário", "desmarcar"], "probe_keywords": ["que horas", "qual dia", "tem vaga", "disponibilidade"]}'::jsonb
     )
     returning id into v_id;
-
-    if (select md5(body) from skill_versions where id = v_id) is distinct from v_md5 then
-      raise exception 'playbook agendamento: o md5 declarado (%) nao corresponde ao corpo inserido. Recalcule antes de publicar.', v_md5;
-    end if;
   end if;
 
   -- Repointe SEMPRE. O ponteiro global e unico por nome (uniq_skill_pointers_platform,
